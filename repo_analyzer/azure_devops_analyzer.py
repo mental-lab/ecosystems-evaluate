@@ -14,10 +14,6 @@ import requests
 import time
 from typing import List, Optional
 from urllib.parse import urljoin
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
-from urllib3.exceptions import InsecureRequestWarning
-from urllib3 import disable_warnings
 
 from .models import RepositoryInfo
 from .platform_analyzers import PlatformAnalyzer
@@ -62,7 +58,7 @@ class AzureDevOpsAnalyzer(PlatformAnalyzer):
         
         while True:
             try:
-                response = self.session.get(url, params=request_params)
+                response = self.session.get(url, params=request_params, timeout=self.timeout)
                 response.raise_for_status()
                 
                 data = response.json()
@@ -92,6 +88,10 @@ class AzureDevOpsAnalyzer(PlatformAnalyzer):
                 self._handle_rate_limiting(response.headers)
                 
             except requests.exceptions.RequestException as e:
+                # Auth failures are not transient — surface them to the caller
+                response = getattr(e, 'response', None)
+                if response is not None and response.status_code in (401, 403):
+                    raise
                 logging.error(f"Error in paginated request to {url}: {e}")
                 break
         
@@ -178,7 +178,7 @@ class AzureDevOpsAnalyzer(PlatformAnalyzer):
             
             repo_url = f"{self.source_url}/{org_name}/{project_name}/_apis/git/repositories/{repo_name}"
             
-            response = self.session.get(repo_url, params=self.api_params)
+            response = self.session.get(repo_url, params=self.api_params, timeout=self.timeout)
             response.raise_for_status()
             
             repo_data = response.json()
@@ -223,7 +223,7 @@ class AzureDevOpsAnalyzer(PlatformAnalyzer):
                 'includeContent': 'true'
             }
             
-            response = self.session.get(file_url, params=params)
+            response = self.session.get(file_url, params=params, timeout=self.timeout)
             
             if response.status_code == 404:
                 return None

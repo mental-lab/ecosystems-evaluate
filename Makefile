@@ -22,11 +22,11 @@ venv:
 		echo "Virtual environment already exists"; \
 	fi
 
-# Install dependencies
+# Install the package (editable) into the virtual environment
 install: venv
 	@echo "Installing dependencies..."
 	@. venv/bin/activate && pip install --upgrade pip
-	@. venv/bin/activate && pip install requests packaging click pydantic
+	@. venv/bin/activate && pip install -e .
 	@echo ""
 	@echo "Installation complete!"
 

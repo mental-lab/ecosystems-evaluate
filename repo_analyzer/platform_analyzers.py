@@ -3,7 +3,6 @@ Platform-specific analyzers for dependency extraction across GitLab, GitHub, and
 """
 
 import os
-import re
 import requests
 import time
 import threading
@@ -14,7 +13,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from urllib3.exceptions import InsecureRequestWarning
 from urllib3 import disable_warnings
-from .models import RepositoryInfo, DependencyInfo
+from .models import RepositoryInfo
 
 
 
@@ -28,9 +27,16 @@ class PlatformAnalyzer(ABC):
     _last_request_time = 0
     _request_delay = 0.1  # 100ms delay between requests
     
+    # Default timeout (seconds) for all platform API requests.
+    # Applies per-request (connect + read), not to the overall analysis.
+    # Override with the REQUEST_TIMEOUT environment variable for slow
+    # self-hosted instances or proxy-heavy networks.
+    DEFAULT_TIMEOUT = 60
+    
     def __init__(self, source_url: str, token: str, ssl_verify: bool = True):
         self.source_url = source_url.rstrip('/')
         self.token = token
+        self.timeout = int(os.getenv('REQUEST_TIMEOUT', self.DEFAULT_TIMEOUT))
         
         # Create persistent session with retry logic
         self.session = requests.Session()

@@ -3,11 +3,11 @@ Repository Analyzer - Multi-platform Dependency Analysis Package
 
 A tool for analyzing dependency manifests across multiple platforms:
 - GitLab, GitHub, Azure DevOps
-- Python, Java, JavaScript ecosystems
+- All ecosystems detected by Syft, plus Dockerfile base images
 - Organization-wide and individual repository analysis
 """
 
-__version__ = "1.0.0"
+__version__ = "0.1.0"
 __author__ = "Chainguard"
 __description__ = "Multi-platform repository dependency analyzer"
 

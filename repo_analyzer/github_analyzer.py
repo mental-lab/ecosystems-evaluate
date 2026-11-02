@@ -29,6 +29,19 @@ class GitHubAnalyzer(PlatformAnalyzer):
             'Accept': 'application/vnd.github.v3+json'
         }
     
+    def _api_base(self) -> str:
+        """Get the REST API base URL for github.com or GitHub Enterprise."""
+        if 'github.com' in self.source_url:
+            return 'https://api.github.com'
+        return f"{self.source_url}/api/v3"
+    
+    def _get_repo_spec(self, repo_info: RepositoryInfo) -> str:
+        """Extract 'owner/repo' spec from repository info."""
+        if '/' in repo_info.name:
+            return repo_info.name
+        # Extract from URL
+        return '/'.join(repo_info.url.split('/')[-2:])
+    
     def get_repositories(self, org_name: str) -> List[RepositoryInfo]:
         """Get all repositories for a GitHub organization or user.
         
@@ -61,7 +74,7 @@ class GitHubAnalyzer(PlatformAnalyzer):
                     url = f"{self.source_url}/api/v3/users/{org_name}/repos"
             
             params = {'page': page, 'per_page': per_page}
-            response = self.session.get(url, params=params)
+            response = self.session.get(url, params=params, timeout=self.timeout)
             response.raise_for_status()
             
             # Handle rate limiting
@@ -102,7 +115,7 @@ class GitHubAnalyzer(PlatformAnalyzer):
         try:
             # Use requests directly with headers since session might not be configured yet
             headers = self._get_auth_headers()
-            response = requests.get(url, headers=headers)
+            response = requests.get(url, headers=headers, timeout=self.timeout)
             response.raise_for_status()
             
             # Handle rate limiting
@@ -131,7 +144,7 @@ class GitHubAnalyzer(PlatformAnalyzer):
         else:
             url = f"{self.source_url}/api/v3/repos/{repo_spec}"
         
-        response = self.session.get(url)
+        response = self.session.get(url, timeout=self.timeout)
         response.raise_for_status()
         
         # Handle rate limiting
@@ -160,20 +173,11 @@ class GitHubAnalyzer(PlatformAnalyzer):
             
         """
         try:
-            # Extract owner/repo from URL or use name
-            if '/' in repo_info.name:
-                repo_spec = repo_info.name
-            else:
-                # Extract from URL
-                repo_spec = '/'.join(repo_info.url.split('/')[-2:])
-            
-            if 'github.com' in self.source_url:
-                url = f"https://api.github.com/repos/{repo_spec}/contents/{file_path}"
-            else:
-                url = f"{self.source_url}/api/v3/repos/{repo_spec}/contents/{file_path}"
+            repo_spec = self._get_repo_spec(repo_info)
+            url = f"{self._api_base()}/repos/{repo_spec}/contents/{file_path}"
             
             params = {'ref': repo_info.default_branch}
-            response = self.session.get(url, params=params)
+            response = self.session.get(url, params=params, timeout=self.timeout)
             if response.status_code == 200:
                 # Handle rate limiting
                 self._handle_rate_limiting(response.headers, "GitHub")

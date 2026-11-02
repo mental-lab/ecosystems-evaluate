@@ -50,12 +50,8 @@ analysis.json
 analysis_*.json
 *-analysis.json
 
+# Local scan artifacts
+grype-report.json
+
 # Workspace files
 *.code-workspace
-
-# Node
-node_modules/
-
-
-# Build output
-docs/

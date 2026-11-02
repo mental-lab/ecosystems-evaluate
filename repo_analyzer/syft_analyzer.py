@@ -8,7 +8,6 @@ import json
 import logging
 import subprocess
 from typing import Dict, List, Optional
-from pathlib import Path
 from .java_parser import JavaParser
 
 

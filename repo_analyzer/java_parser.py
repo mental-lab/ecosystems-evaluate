@@ -2,14 +2,14 @@
 Java dependency parser for Maven pom.xml files.
 
 Complements syft by extracting proper Maven coordinates (groupId:artifactId:version)
-from pom.xml files to enable accurate coverage checking.
+from pom.xml files for accurate dependency reporting.
 """
 
 import logging
 import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 
 class JavaParser:

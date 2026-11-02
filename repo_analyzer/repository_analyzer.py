@@ -7,14 +7,15 @@ Simple Usage:
     >>> analyzer.save_results(results, 'output.json')
 
 Supported Platforms: gitlab, github, ado
-Supported Ecosystems: Python, Java, JavaScript
+Supported Ecosystems: all languages detected by Syft (Python, Java,
+JavaScript, Go, Rust, Ruby, .NET, and more), plus Dockerfile base images
 """
 
 import json
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from .models import OrganizationAnalysis, ProjectAnalysis, RepositoryInfo, DependencyInfo, SkippedRepository
@@ -39,9 +40,9 @@ class RepositoryAnalyzer:
         >>> print(f"Found {results.total_dependencies} dependencies")
     """
 
-    # Supported platforms and ecosystems (for user reference)
+    # Supported platforms (for user reference). Ecosystem detection is
+    # handled by Syft; every detected ecosystem is reported.
     SUPPORTED_PLATFORMS = ['gitlab', 'github', 'ado']
-    SUPPORTED_ECOSYSTEMS = ['python', 'java', 'javascript']
 
     def __init__(self, platform: str, url: str, token: str, max_workers: int = 4):
         """Initialize analyzer with platform credentials."""
@@ -62,7 +63,7 @@ class RepositoryAnalyzer:
         self._analyzer = get_analyzer(self.platform, self.url, self.token)
         
         # Create git cloner, syft analyzer, and dockerfile analyzer
-        self.git_cloner = GitCloner(token=self.token)
+        self.git_cloner = GitCloner(token=self.token, platform=self.platform)
         self.syft_analyzer = SyftAnalyzer()
         self.dockerfile_analyzer = DockerfileAnalyzer()
         
@@ -259,7 +260,7 @@ class RepositoryAnalyzer:
                 repository=repo_info,
                 manifests=manifests,
                 total_dependencies=total_deps,
-                collection_timestamp=datetime.utcnow().isoformat(),
+                collection_timestamp=datetime.now(timezone.utc).isoformat(),
                 dockerfile_adoption=dockerfile_results if dockerfile_results['dockerfiles_found'] > 0 else None
             )
             
@@ -332,9 +333,14 @@ class RepositoryAnalyzer:
                 manifests=manifests,
                 total_dependencies=project_data["total_dependencies"],
                 collection_timestamp=project_data["collection_timestamp"],
-                note=project_data.get("note", "")
+                note=project_data.get("note", ""),
+                dockerfile_adoption=project_data.get("dockerfile_adoption")
             ))
-        
+
+        skipped = [
+            SkippedRepository(**s) for s in data.get("skipped_projects", [])
+        ]
+
         return OrganizationAnalysis(
             organization_name=data["organization_name"],
             platform=data["platform"],
@@ -344,6 +350,7 @@ class RepositoryAnalyzer:
             total_dependencies=data["total_dependencies"],
             projects=projects,
             ecosystems_breakdown=data["ecosystems_breakdown"],
+            skipped_projects=skipped,
         )
     
     def generate_summary_report(self, analysis: OrganizationAnalysis) -> Dict[str, Any]:
@@ -356,7 +363,6 @@ class RepositoryAnalyzer:
                 "total_projects": analysis.total_projects,
                 "analyzed_projects": analysis.analyzed_projects,
                 "total_dependencies": analysis.total_dependencies,
-                "coverage_note": "Coverage percentages calculated server-side by ecosystems-insights"
             },
             "ecosystems": analysis.ecosystems_breakdown,
             "top_dependencies": self._get_top_dependencies(analysis),
@@ -384,8 +390,7 @@ class RepositoryAnalyzer:
     
     def _get_timestamp(self) -> str:
         """Get current timestamp."""
-        from datetime import datetime
-        return datetime.utcnow().isoformat()
+        return datetime.now(timezone.utc).isoformat()
     
     def _group_projects_by_ecosystem(self, analysis: OrganizationAnalysis) -> Dict[str, List[str]]:
         """Group project names by ecosystem."""

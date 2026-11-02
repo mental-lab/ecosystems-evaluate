@@ -1,0 +1,31 @@
+# Secrets and local config — must never enter the image
+.env
+.netrc
+
+# Version control
+.git/
+.github/
+
+# Python build artifacts
+venv/
+env/
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+
+# Analysis outputs
+analysis.json
+analysis_*.json
+*-analysis.json
+grype-report.json
+
+# Editor/OS cruft
+.vscode/
+.idea/
+*.code-workspace
+.DS_Store
+
+# Build output
+docs/
+node_modules/

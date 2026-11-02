@@ -57,7 +57,7 @@ class GitLabAnalyzer(PlatformAnalyzer):
                 'simple': 'true'              # Reduce response size
             }
 
-            response = self.session.get(url, params=params)
+            response = self.session.get(url, params=params, timeout=self.timeout)
             response.raise_for_status()
 
             # Handle rate limiting
@@ -94,7 +94,7 @@ class GitLabAnalyzer(PlatformAnalyzer):
         project_param = requests.utils.quote(repo_spec, safe='')
         url = f"{self.source_url}/api/v4/projects/{project_param}"
 
-        response = self.session.get(url)
+        response = self.session.get(url, timeout=self.timeout)
         response.raise_for_status()
         
         # Handle rate limiting
@@ -127,7 +127,7 @@ class GitLabAnalyzer(PlatformAnalyzer):
             url = f"{self.source_url}/api/v4/projects/{project_id}/repository/files/{file_param}/raw"
             params = {'ref': repo_info.default_branch}
 
-            response = self.session.get(url, params=params)
+            response = self.session.get(url, params=params, timeout=self.timeout)
             if response.status_code == 200:
                 # Handle rate limiting
                 self._handle_rate_limiting(response.headers, "GitLab")

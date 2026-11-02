@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=78"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ecosystems-evaluate"
+version = "0.1.0"
+description = "Dependency and container image analysis for GitLab, GitHub, and Azure DevOps"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{name = "Chainguard"}]
+dependencies = [
+    "click>=8.1.0",
+    "python-dotenv>=1.0.0",
+    "requests>=2.32.5",
+]
+
+[project.urls]
+Homepage = "https://github.com/mental-lab/ecosystems-evaluate"
+
+[project.scripts]
+ecosystems-evaluate = "repo_analyzer.cli:cli"
+
+[tool.setuptools]
+packages = ["repo_analyzer"]

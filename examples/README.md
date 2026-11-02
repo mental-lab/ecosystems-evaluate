@@ -2,7 +2,16 @@
 
 See [`sample_output.json`](./sample_output.json) for example output format.
 
-## Basic Usage
+## Container (recommended)
+
+```bash
+# .env holds PLATFORM/SOURCE/TOKEN/ORG
+docker run --rm --env-file .env -v "$PWD:/out" \
+  ghcr.io/mental-lab/ecosystems-evaluate:latest \
+  -O /out/analysis.json -v
+```
+
+## CLI (installed via pipx)
 
 ### Using .env file (Recommended)
 
@@ -14,44 +23,37 @@ TOKEN=glpat-xxx
 ORG=my-org
 
 # 2. Run
-python3 main.py -O analysis.json -v
+ecosystems-evaluate -O analysis.json -v
 ```
 
 ### Using CLI flags
 
 ```bash
 # GitLab
-python3 main.py -p gitlab -s https://gitlab.com -t $TOKEN -o my-org -O analysis.json -v
+ecosystems-evaluate -p gitlab -s https://gitlab.com -t $TOKEN -o my-org -O analysis.json -v
 
 # GitHub
-python3 main.py -p github -s https://github.com -t $TOKEN -o my-org -O analysis.json -v
+ecosystems-evaluate -p github -s https://github.com -t $TOKEN -o my-org -O analysis.json -v
 
 # Azure DevOps
-python3 main.py -p ado -s https://dev.azure.com/my-org -t $TOKEN -o my-org -O analysis.json -v
+ecosystems-evaluate -p ado -s https://dev.azure.com/my-org -t $TOKEN -o my-org -O analysis.json -v
 ```
 
-## With Coverage Analysis
-
-```bash
-# Add Chainguard credentials to .env
-CHAINGUARD_PYTHON_USERNAME=your_username
-CHAINGUARD_PYTHON_PASSWORD=your_token
-CHAINGUARD_JAVA_USERNAME=your_username
-CHAINGUARD_JAVA_PASSWORD=your_token
-
-# Run with coverage
-python3 main.py -O analysis.json --coverage -v
-```
+Running from a source checkout? Substitute `python3 main.py` for
+`ecosystems-evaluate` in any of these commands.
 
 ## Advanced
 
 ```bash
 # Specific repository
-python3 main.py -p github -t $TOKEN -o my-org -r owner/repo -O analysis.json -v
+ecosystems-evaluate -p github -t $TOKEN -o my-org -r owner/repo -O analysis.json -v
+
+# Specific branch
+ecosystems-evaluate -p github -t $TOKEN -o my-org -b develop -O analysis.json -v
 
 # More workers for large orgs
-python3 main.py -O analysis.json -w 8 -v
+ecosystems-evaluate -O analysis.json -w 8 -v
 
-# Add coverage to existing analysis
-python3 main.py -i analysis.json -O output.json --coverage -v
+# Longer API timeout for slow self-hosted instances
+REQUEST_TIMEOUT=120 ecosystems-evaluate -O analysis.json -v
 ```

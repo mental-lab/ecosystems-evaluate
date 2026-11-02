@@ -74,3 +74,6 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository }}:${{ github.ref_name }}
             ghcr.io/${{ github.repository }}:latest
+          # Links the GHCR package back to this repo (sidebar, README render)
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}

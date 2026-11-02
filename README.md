@@ -20,9 +20,8 @@ Build locally instead of pulling:
 ```bash
 git clone https://github.com/mental-lab/ecosystems-evaluate.git
 cd ecosystems-evaluate
-docker build -t ecosystems-evaluate .
-docker run --rm --env-file .env -v "$PWD:/out" \
-  ecosystems-evaluate -O /out/analysis.json -v
+cp .env.example .env   # fill in your values
+make docker-run        # builds the image, runs analysis, writes ./analysis.json
 ```
 
 `.env` and other secrets are excluded from the image build via `.dockerignore`.

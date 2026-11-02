@@ -1,5 +1,7 @@
 # Ecosystems Evaluate
 
+[![CI](https://github.com/mental-lab/ecosystems-evaluate/actions/workflows/ci.yml/badge.svg)](https://github.com/mental-lab/ecosystems-evaluate/actions/workflows/ci.yml)
+
 Dependency and container image analysis for GitLab, GitHub, and Azure DevOps.
 
 ## Quick Start (Container — recommended)

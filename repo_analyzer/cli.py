@@ -21,8 +21,8 @@ from .repository_analyzer import RepositoryAnalyzer
 
 @click.command()
 @click.version_option(__version__)
-@click.option('-p', '--platform', type=click.Choice(['gitlab', 'github', 'ado'], case_sensitive=False), help='Platform to analyze (gitlab, github, ado)')
-@click.option('-s', '--source', help='Platform instance URL (e.g., https://gitlab.com)')
+@click.option('-p', '--platform', type=click.Choice(['gitlab', 'github', 'ado', 'local'], case_sensitive=False), help='Platform to analyze (gitlab, github, ado, local)')
+@click.option('-s', '--source', help='Platform instance URL, or directory path for local analysis')
 @click.option('-t', '--token', help='Personal access token')
 @click.option('-o', '--org', help='Organization/group name to analyze')
 @click.option('-r', '--repo', help='Specific repository to analyze (format: owner/repo for GitHub, group/project for GitLab)')
@@ -37,6 +37,7 @@ def cli(platform: str, source: str, token: str, org: str, repo: str, branch: str
         gitlab  - Fully tested
         github  - Fully tested
         ado     - Azure DevOps support
+        local   - Existing directory, no credentials required
 
     Examples:
         # Using environment variables (recommended - see .env.example)
@@ -82,8 +83,21 @@ def cli(platform: str, source: str, token: str, org: str, repo: str, branch: str
     if workers is None:
         workers = int(os.getenv('WORKERS', '4'))
 
+    platform = platform.lower() if platform else platform
+    if platform == 'local':
+        if not source:
+            raise click.UsageError("--source is required for local analysis")
+        if repo or branch:
+            raise click.UsageError("--repo and --branch are not supported for local analysis; scan the current checkout")
+        source = click.Path(exists=True, file_okay=False, readable=True, resolve_path=True).convert(
+            os.path.expanduser(source), None, None
+        )
+        # Local scans never use credentials loaded from the environment.
+        token = None
+        org = None
+
     # Validate required parameters
-    if not all([platform, source, token, org]):
+    if platform != 'local' and not all([platform, source, token, org]):
         click.echo("Error: -p/--platform, -s/--source, -t/--token, and -o/--org are required", err=True)
         click.echo("Tip: set PLATFORM, SOURCE, TOKEN, and ORG in a .env file instead", err=True)
         raise click.Abort()
@@ -96,7 +110,11 @@ def cli(platform: str, source: str, token: str, org: str, repo: str, branch: str
         # Initialize analyzer with platform credentials
         analyzer = RepositoryAnalyzer(platform=platform, url=source, token=token, max_workers=workers)
 
-        if repo:
+        if platform == 'local':
+            if verbose:
+                click.echo(f"Analyzing local directory {source}")
+            analysis = analyzer.analyze_local(source)
+        elif repo:
             # Analyze specific repository
             # For GitHub, need to combine org/repo format
             if platform.lower() == 'github' and '/' not in repo:

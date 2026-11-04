@@ -26,6 +26,17 @@ This writes `analysis.json` in the current host directory. Keep
 `MSYS_NO_PATHCONV=1` so Git Bash preserves `/out/analysis.json` inside the
 container. For PowerShell, see the [main Quick Start](../README.md#quick-start-container--recommended).
 
+## Local checkout (no credentials)
+
+```bash
+ecosystems-evaluate -p local -s ./my-repo -O analysis.json -v
+```
+
+Scans the current files, including uncommitted changes, without cloning or
+calling a platform API. Requires Syft on PATH. See the
+[local checkout guide](../README.md#analyze-a-local-checkout) for container
+commands, including Windows Git Bash and PowerShell.
+
 ## CLI (installed via pipx)
 
 ### Using .env file (Recommended)

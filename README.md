@@ -2,7 +2,11 @@
 
 [![CI](https://github.com/mental-lab/ecosystems-evaluate/actions/workflows/ci.yml/badge.svg)](https://github.com/mental-lab/ecosystems-evaluate/actions/workflows/ci.yml)
 
-Dependency and container image analysis for GitLab, GitHub, and Azure DevOps.
+Dependency and container image analysis for GitLab, GitHub, Azure DevOps, and
+local repository checkouts.
+
+Already have the repository on disk? Use
+[local checkout analysis](#analyze-a-local-checkout) without credentials or cloning.
 
 ## Quick Start (Container — recommended)
 
@@ -51,17 +55,76 @@ make docker-run        # builds the image, runs analysis, writes ./analysis.json
 
 ## Quick Start (CLI)
 
-Requires Python 3.10+, git 2.31+, and
+Requires Python 3.10+ and
 [syft](https://github.com/anchore/syft) (`brew install syft`) on PATH.
+Remote analysis also requires git 2.31+.
 
 ```bash
 pipx install git+https://github.com/mental-lab/ecosystems-evaluate.git
 
-# Configure credentials (recommended — .env is gitignored)
+# Scan an existing local checkout (no credentials)
+ecosystems-evaluate -p local -s ./my-repo -O analysis.json -v
+```
+
+For GitLab, GitHub, or Azure DevOps, configure credentials first:
+
+```bash
+# .env is gitignored
 cp .env.example .env   # from a clone, or create one with PLATFORM/SOURCE/TOKEN/ORG
 
 ecosystems-evaluate -O analysis.json -v
 ```
+
+## Analyze a Local Checkout
+
+Scan a repository already on your filesystem without a token, organization,
+API requests, or cloning:
+
+```bash
+ecosystems-evaluate -p local -s ./my-repo -O analysis.json -v
+# From a source checkout:
+python3 main.py -p local -s ./my-repo -O analysis.json -v
+```
+
+This scans the files currently on disk, including uncommitted changes, using
+Syft and the Dockerfile scanner. The directory does not need Git metadata.
+Syft must be installed for CLI usage; git is only required for remote scans.
+`--repo` and `--branch` are unavailable in local mode. Existing TOKEN and ORG
+values in your environment or `.env` are ignored for local analysis.
+
+Container (macOS/Linux), with the checkout mounted read-only:
+
+```bash
+docker run --rm \
+  --mount "type=bind,source=$PWD/my-repo,target=/repo,readonly" \
+  --mount "type=bind,source=$PWD,target=/out" \
+  ghcr.io/mental-lab/ecosystems-evaluate:latest \
+  -p local -s /repo -O /out/analysis.json -v
+```
+
+Windows Git Bash:
+
+```bash
+MSYS_NO_PATHCONV=1 docker run --rm \
+  --mount "type=bind,source=$(pwd -W)/my-repo,target=/repo,readonly" \
+  --mount "type=bind,source=$(pwd -W),target=/out" \
+  ghcr.io/mental-lab/ecosystems-evaluate:latest \
+  -p local -s /repo -O /out/analysis.json -v
+```
+
+Windows PowerShell:
+
+```powershell
+docker run --rm `
+  --mount "type=bind,source=${PWD}/my-repo,target=/repo,readonly" `
+  --mount "type=bind,source=${PWD},target=/out" `
+  ghcr.io/mental-lab/ecosystems-evaluate:latest `
+  -p local -s /repo -O /out/analysis.json -v
+```
+
+Replace `my-repo` with your checkout directory. These container commands need
+no `.env` file and write `analysis.json` to the current host directory. Use an
+image built from this change (or the published image after release).
 
 ## Local Development
 
@@ -78,6 +141,7 @@ python3 main.py -O analysis.json -v   # or: ecosystems-evaluate -O analysis.json
 - **GitLab** - gitlab.com or self-hosted
 - **GitHub** - github.com or Enterprise
 - **Azure DevOps** - dev.azure.com or Server
+- **Local** - An existing directory on your filesystem
 
 ## What Gets Detected
 
@@ -99,12 +163,12 @@ Dockerfile Adoption:
 ## Options
 
 Run `ecosystems-evaluate --help` (or `python3 main.py --help`) for all options.
-- `-p, --platform` - Platform: gitlab, github, ado
-- `-s, --source` - Platform instance URL
-- `-t, --token` - Personal access token (prefer `TOKEN` env var or `.env` — CLI tokens leak via shell history)
-- `-o, --org` - Organization/group name
-- `-r, --repo` - Specific repository (optional)
-- `-b, --branch` - Specific branch to analyze (default: repository default branch)
+- `-p, --platform` - Platform: gitlab, github, ado, local
+- `-s, --source` - Platform instance URL, or directory path for local analysis
+- `-t, --token` - Personal access token for remote analysis (prefer `TOKEN` env var or `.env` — CLI tokens leak via shell history)
+- `-o, --org` - Organization/group name for remote analysis
+- `-r, --repo` - Specific remote repository (optional)
+- `-b, --branch` - Remote branch to analyze (default: repository default branch); local mode scans the current files
 - `-O, --output` - Output file path
 - `-w, --workers` - Parallel workers (default: 4)
 - `-v, --verbose` - Show progress

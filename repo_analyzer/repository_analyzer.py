@@ -16,6 +16,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .models import OrganizationAnalysis, ProjectAnalysis, RepositoryInfo, DependencyInfo, SkippedRepository
@@ -42,9 +43,9 @@ class RepositoryAnalyzer:
 
     # Supported platforms (for user reference). Ecosystem detection is
     # handled by Syft; every detected ecosystem is reported.
-    SUPPORTED_PLATFORMS = ['gitlab', 'github', 'ado']
+    SUPPORTED_PLATFORMS = ['gitlab', 'github', 'ado', 'local']
 
-    def __init__(self, platform: str, url: str, token: str, max_workers: int = 4):
+    def __init__(self, platform: str, url: str = "", token: str = "", max_workers: int = 4):
         """Initialize analyzer with platform credentials."""
         self.platform = platform.lower()
         self.url = url
@@ -60,19 +61,44 @@ class RepositoryAnalyzer:
             )
 
         # Create platform-specific analyzer (only for listing repos)
-        self._analyzer = get_analyzer(self.platform, self.url, self.token)
+        self._analyzer = (get_analyzer(self.platform, self.url, self.token)
+                          if self.platform != "local" else None)
         
         # Create git cloner, syft analyzer, and dockerfile analyzer
-        self.git_cloner = GitCloner(token=self.token, platform=self.platform)
+        self.git_cloner = (GitCloner(token=self.token, platform=self.platform)
+                           if self.platform != "local" else None)
         self.syft_analyzer = SyftAnalyzer()
         self.dockerfile_analyzer = DockerfileAnalyzer()
         
         # Check dependencies
-        if not self.git_cloner.check_git_available():
+        if self.git_cloner and not self.git_cloner.check_git_available():
             raise RuntimeError("git is not installed or not available in PATH")
         
         if not self.syft_analyzer.check_syft_available():
             raise RuntimeError("syft is not installed or not available in PATH. Install from: https://github.com/anchore/syft")
+
+    def analyze_local(self, source: str) -> OrganizationAnalysis:
+        """Scan an existing directory without cloning or modifying its checkout."""
+        if self.platform != 'local':
+            raise ValueError("Local analysis requires platform='local'")
+        path = Path(source).expanduser().resolve()
+        if not path.is_dir():
+            raise ValueError(f"Local source must be an existing directory: {source}")
+        repo = RepositoryInfo(
+            name=path.name or str(path), url=path.as_uri(), platform='local',
+            default_branch='',
+        )
+        project = self._scan_directory(repo, str(path))
+        return OrganizationAnalysis(
+            organization_name=repo.name, platform='local', timestamp=self._get_timestamp(),
+            total_projects=1, analyzed_projects=1 if project else 0,
+            total_dependencies=project.total_dependencies if project else 0,
+            projects=[project] if project else [],
+            ecosystems_breakdown=self._calculate_ecosystems_breakdown([project] if project else []),
+            skipped_projects=[] if project else [SkippedRepository(
+                name=repo.name, url=repo.url, reason="No dependencies or Dockerfiles found",
+            )],
+        )
 
     def analyze_organization(self, organization: str, branch: Optional[str] = None) -> OrganizationAnalysis:
         """Analyze all repositories in an organization for dependencies.
@@ -209,63 +235,8 @@ class RepositoryAnalyzer:
                 self.logger.warning(f"Failed to clone {repo_info.name}")
                 return None
             
-            # Run syft analysis
-            self.logger.debug(f"Running syft on {repo_info.name}...")
-            sbom_data = self.syft_analyzer.analyze_repository(clone_path)
-            
-            if not sbom_data:
-                self.logger.warning(f"Syft analysis failed for {repo_info.name}")
-                return None
-            
-            # Analyze Dockerfiles for Chainguard image adoption
-            self.logger.debug(f"Analyzing Dockerfiles in {repo_info.name}...")
-            dockerfile_results = self.dockerfile_analyzer.analyze_repository(clone_path)
-            
-            # Parse SBOM into our dependency format (with Java enhancement)
-            dependencies_by_ecosystem = self.syft_analyzer.parse_sbom_to_dependencies(sbom_data, repo_path=clone_path)
-            
-            # Check if we found anything useful
-            has_dependencies = dependencies_by_ecosystem and any(len(deps) > 0 for deps in dependencies_by_ecosystem.values())
-            has_dockerfiles = dockerfile_results['dockerfiles_found'] > 0
-            
-            if not has_dependencies and not has_dockerfiles:
-                self.logger.debug(f"No dependencies or Dockerfiles found in {repo_info.name}")
-                return None
-            
-            # Convert to manifest format
-            manifests = []
-            total_deps = 0
-            
-            for ecosystem, deps in dependencies_by_ecosystem.items():
-                if deps:
-                    # Get unique file paths from dependencies
-                    file_paths = set()
-                    for dep in deps:
-                        for loc in dep.get('locations', []):
-                            if loc:
-                                file_paths.add(loc)
-                    
-                    manifest = DependencyInfo(
-                        file_path=', '.join(sorted(file_paths)[:3]) if file_paths else f'{ecosystem} dependencies',
-                        file_type='sbom',
-                        ecosystem=ecosystem,
-                        dependencies=[{'name': d['name'], 'version': d['version']} for d in deps],
-                        build_tool='syft'
-                    )
-                    manifests.append(manifest)
-                    total_deps += len(deps)
-            
-            # Create project analysis with Dockerfile adoption info
-            project = ProjectAnalysis(
-                repository=repo_info,
-                manifests=manifests,
-                total_dependencies=total_deps,
-                collection_timestamp=datetime.now(timezone.utc).isoformat(),
-                dockerfile_adoption=dockerfile_results if dockerfile_results['dockerfiles_found'] > 0 else None
-            )
-            
-            return project
-            
+            return self._scan_directory(repo_info, clone_path)
+
         except Exception as e:
             self.logger.error(f"Failed to analyze {repo_info.name}: {e}")
             return None
@@ -274,6 +245,66 @@ class RepositoryAnalyzer:
             if clone_path:
                 self.git_cloner.cleanup(clone_path)
     
+    def _scan_directory(self, repo_info: RepositoryInfo, scan_path: str) -> Optional[ProjectAnalysis]:
+        """Run the shared dependency and Dockerfile scanners on a directory."""
+        # Run syft analysis
+        self.logger.debug(f"Running syft on {repo_info.name}...")
+        sbom_data = self.syft_analyzer.analyze_repository(scan_path)
+
+        if not sbom_data:
+            self.logger.warning(f"Syft analysis failed for {repo_info.name}")
+            raise RuntimeError(f"Syft analysis failed for {repo_info.name}")
+
+        # Analyze Dockerfiles for Chainguard image adoption
+        self.logger.debug(f"Analyzing Dockerfiles in {repo_info.name}...")
+        dockerfile_results = self.dockerfile_analyzer.analyze_repository(scan_path)
+
+        # Parse SBOM into our dependency format (with Java enhancement)
+        dependencies_by_ecosystem = self.syft_analyzer.parse_sbom_to_dependencies(sbom_data, repo_path=scan_path)
+
+        # Check if we found anything useful
+        has_dependencies = dependencies_by_ecosystem and any(len(deps) > 0 for deps in dependencies_by_ecosystem.values())
+        has_dockerfiles = dockerfile_results['dockerfiles_found'] > 0
+
+        if not has_dependencies and not has_dockerfiles:
+            self.logger.debug(f"No dependencies or Dockerfiles found in {repo_info.name}")
+            return None
+
+        # Convert to manifest format
+        manifests = []
+        total_deps = 0
+
+        for ecosystem, deps in dependencies_by_ecosystem.items():
+            if deps:
+                # Get unique file paths from dependencies
+                file_paths = set()
+                for dep in deps:
+                    for loc in dep.get('locations', []):
+                        if loc:
+                            file_paths.add(loc)
+
+                manifest = DependencyInfo(
+                    file_path=', '.join(sorted(file_paths)[:3]) if file_paths else f'{ecosystem} dependencies',
+                    file_type='sbom',
+                    ecosystem=ecosystem,
+                    dependencies=[{'name': d['name'], 'version': d['version']} for d in deps],
+                    build_tool='syft'
+                )
+                manifests.append(manifest)
+                total_deps += len(deps)
+
+        # Create project analysis with Dockerfile adoption info
+        project = ProjectAnalysis(
+            repository=repo_info,
+            manifests=manifests,
+            total_dependencies=total_deps,
+            collection_timestamp=datetime.now(timezone.utc).isoformat(),
+            dockerfile_adoption=dockerfile_results if dockerfile_results['dockerfiles_found'] > 0 else None
+        )
+
+        return project
+
+
     def _calculate_ecosystems_breakdown(self, projects: List[ProjectAnalysis]) -> Dict[str, Dict[str, Any]]:
         """Calculate ecosystems breakdown from projects."""
         ecosystems = {}

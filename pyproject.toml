@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ecosystems-evaluate"
-version = "0.1.0"
+version = "0.1.1"
 description = "Dependency and container image analysis for GitLab, GitHub, and Azure DevOps"
 readme = "README.md"
 requires-python = ">=3.10"

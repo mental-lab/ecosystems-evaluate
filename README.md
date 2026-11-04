@@ -7,7 +7,8 @@ Dependency and container image analysis for GitLab, GitHub, and Azure DevOps.
 ## Quick Start (Container — recommended)
 
 The image is self-contained (includes git and syft) and runs as nonroot on a
-Chainguard base.
+Chainguard base. The following command is for macOS/Linux. For Windows, use
+the Git Bash or PowerShell command below.
 
 ```bash
 # Configure credentials (copy .env.example from the repo, or create your own)
@@ -16,6 +17,26 @@ docker run --rm --env-file .env -v "$PWD:/out" \
   ghcr.io/mental-lab/ecosystems-evaluate:latest \
   -O /out/analysis.json -v
 ```
+
+Windows Git Bash:
+
+```bash
+MSYS_NO_PATHCONV=1 docker run --rm --env-file .env \
+  --mount "type=bind,source=$(pwd -W),target=/out" \
+  ghcr.io/mental-lab/ecosystems-evaluate:latest \
+  -O /out/analysis.json -v
+```
+
+Windows PowerShell:
+
+```powershell
+docker run --rm --env-file .env --mount "type=bind,source=${PWD},target=/out" `
+  ghcr.io/mental-lab/ecosystems-evaluate:latest `
+  -O /out/analysis.json -v
+```
+
+After a successful run, `analysis.json` is in the host directory where you ran
+the command. `/out` is the mounted directory inside the container.
 
 Build locally instead of pulling:
 
@@ -124,6 +145,17 @@ backs off when limits are near. For slow self-hosted instances raise
 **`Permission denied` writing to `/out` (container)** — mount a directory
 under your home folder (e.g. `-v "$PWD:/out"`). Some Docker runtimes
 (Rancher Desktop) restrict writes to bind mounts outside the home directory.
+
+**Windows Git Bash reports a path such as
+`C:/Users/.../AppData/Local/Git/out/analysis.json`, but no host file exists** —
+Git Bash can rewrite the container argument `/out/analysis.json` into a Windows
+path before Docker receives it. The analyzer may write that path inside the
+container, outside the bind mount; `--rm` then deletes it with the container.
+Changing the host directory alone does not fix this. Use the Git Bash command
+in Quick Start: `MSYS_NO_PATHCONV=1` preserves container paths, while
+`$(pwd -W)` supplies a native Windows path for the host mount. Rerun the analysis
+and check `ls -l analysis.json` in the host directory, or use PowerShell.
+See [Docker's Git Bash troubleshooting](https://docs.docker.com/desktop/troubleshoot-and-support/troubleshoot/topics/#docker-commands-failing-in-git-bash).
 
 ## Releasing (maintainers)
 

@@ -4,12 +4,27 @@ See [`sample_output.json`](./sample_output.json) for example output format.
 
 ## Container (recommended)
 
+macOS/Linux:
+
 ```bash
 # .env holds PLATFORM/SOURCE/TOKEN/ORG
 docker run --rm --env-file .env -v "$PWD:/out" \
   ghcr.io/mental-lab/ecosystems-evaluate:latest \
   -O /out/analysis.json -v
 ```
+
+Windows Git Bash:
+
+```bash
+MSYS_NO_PATHCONV=1 docker run --rm --env-file .env \
+  --mount "type=bind,source=$(pwd -W),target=/out" \
+  ghcr.io/mental-lab/ecosystems-evaluate:latest \
+  -O /out/analysis.json -v
+```
+
+This writes `analysis.json` in the current host directory. Keep
+`MSYS_NO_PATHCONV=1` so Git Bash preserves `/out/analysis.json` inside the
+container. For PowerShell, see the [main Quick Start](../README.md#quick-start-container--recommended).
 
 ## CLI (installed via pipx)
 

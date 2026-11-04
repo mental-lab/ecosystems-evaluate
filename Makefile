@@ -46,7 +46,8 @@ docker-build:
 # Run analysis in the container — credentials come from .env,
 # report is written to ./analysis.json on the host
 docker-run: docker-build
-	docker run --rm --env-file .env -v "$$PWD:/out" \
+	MSYS_NO_PATHCONV=1 docker run --rm --env-file .env \
+		--mount "type=bind,source=$$(pwd -W 2>/dev/null || pwd),target=/out" \
 		ecosystems-evaluate -O /out/analysis.json -v
 
 # Clean analysis output files

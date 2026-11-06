@@ -89,6 +89,70 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+  unjam-report:
+    name: Report package blockers
+    needs: build-and-scan
+    if: >-
+      always() && github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor == github.repository_owner
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Check out Unjam
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: mental-lab/unjam
+          ref: d6b1308c3f626d00ee90d5d47d6e236c22baae7d
+          ssh-key: ${{ secrets.UNJAM_DEPLOY_KEY }}
+          persist-credentials: false
+          path: unjam
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.27.x'
+          cache: false
+
+      - name: Build Unjam
+        working-directory: unjam
+        run: go build -trimpath -o ../unjam-cli ./cmd/unjam
+
+      - name: Download scan evidence
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: unjam-evidence
+          path: evidence
+
+      - name: Record package blockers
+        env:
+          TEST_REPOSITORY: ${{ github.repository }}
+          TEST_PR: ${{ github.event.pull_request.number }}
+          TEST_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          TEST_RUN_ID: ${{ github.run_id }}
+        run: |
+          python - <<'PYREPOSITORY'
+          from pathlib import Path
+          repositories = Path("evidence/repositories").read_text().splitlines()
+          if repositories != ["https://apk.cgr.dev/chainguard"]:
+              raise SystemExit("APK repository differs from this integration's configured source")
+          PYREPOSITORY
+          ./unjam-cli record \
+            --scan evidence/grype.json --apk-db evidence/installed \
+            --repository https://apk.cgr.dev/chainguard \
+            --repo "$TEST_REPOSITORY" --pr "$TEST_PR" \
+            --head-sha "$TEST_HEAD_SHA" --run-id "$TEST_RUN_ID" \
+            --out evidence/record.json
+
+      - name: Update PR report
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ./unjam-cli publish --record evidence/record.json --bot-login 'github-actions[bot]' --enroll
+
   # Publish to GHCR on version tags (git tag v1.0.0 && git push --tags).
   # Uses the built-in GITHUB_TOKEN; no extra secrets needed. After the
   # first push, flip the package to public in GitHub package settings.

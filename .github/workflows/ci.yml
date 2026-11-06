@@ -1,6 +1,14 @@
 name: CI
 
 on:
+  schedule:
+    - cron: '17 */3 * * *'
+  workflow_dispatch:
+    inputs:
+      execute:
+        description: Request verification builds for changed packages
+        type: boolean
+        default: false
   push:
     branches: [master]
     tags: ['v*']
@@ -11,6 +19,7 @@ permissions:
 
 jobs:
   test:
+    if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -35,6 +44,7 @@ jobs:
         run: pip install pip-audit && pip-audit
 
   build-and-scan:
+    if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -84,22 +94,29 @@ jobs:
         if: always() && steps.build.outcome == 'success'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: unjam-evidence
+          name: unjam-evidence-${{ github.run_attempt }}
           path: unjam-evidence/
           retention-days: 7
           if-no-files-found: error
 
   unjam-report:
-    name: Report package blockers
+    name: Track package blockers
     needs: build-and-scan
+    concurrency:
+      group: unjam-controller
+      cancel-in-progress: false
     if: >-
-      always() && github.event_name == 'pull_request' &&
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      github.actor == github.repository_owner
+      always() && (
+        (github.event_name == 'pull_request' &&
+         github.event.pull_request.head.repo.full_name == github.repository &&
+         github.actor == github.repository_owner) ||
+        (github.event_name == 'schedule' && vars.UNJAM_ENABLED == 'true') ||
+        (github.event_name == 'workflow_dispatch' && github.actor == github.repository_owner)
+      )
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      actions: read
+      actions: write
       issues: write
       pull-requests: write
     steps:
@@ -107,7 +124,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           repository: mental-lab/unjam
-          ref: 7b0be07d606569f0b25f8e6c5e7fbfe71444e45a
+          ref: ce529a47ce57a6cd5e9db0ca7da36e794c529fa6
           ssh-key: ${{ secrets.UNJAM_DEPLOY_KEY }}
           persist-credentials: false
           path: unjam
@@ -123,12 +140,14 @@ jobs:
         run: go build -trimpath -o ../unjam-cli ./cmd/unjam
 
       - name: Download scan evidence
+        if: github.event_name == 'pull_request'
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
-          name: unjam-evidence
+          name: unjam-evidence-${{ github.run_attempt }}
           path: evidence
 
       - name: Record package blockers
+        if: github.event_name == 'pull_request'
         env:
           TEST_REPOSITORY: ${{ github.repository }}
           TEST_PR: ${{ github.event.pull_request.number }}
@@ -149,12 +168,26 @@ jobs:
             --out evidence/record.json
 
       - name: Look up Chainguard advisories
+        if: github.event_name == 'pull_request'
         run: ./unjam-cli advise --record evidence/record.json --out evidence/advised-record.json
 
       - name: Update PR report
+        if: github.event_name == 'pull_request'
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: ./unjam-cli publish --record evidence/advised-record.json --bot-login 'github-actions[bot]' --enroll
+
+      - name: Check labeled PRs
+        if: github.event_name != 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          UNJAM_REPOSITORY: ${{ github.repository }}
+          UNJAM_EXECUTE: ${{ github.event_name == 'schedule' || inputs.execute }}
+        run: |
+          args=(poll --repo "$UNJAM_REPOSITORY" --bot-login 'github-actions[bot]'
+                --allow-repository https://apk.cgr.dev/chainguard)
+          if [[ "$UNJAM_EXECUTE" == "true" ]]; then args+=(--execute); fi
+          ./unjam-cli "${args[@]}"
 
   # Publish to GHCR on version tags (git tag v1.0.0 && git push --tags).
   # Uses the built-in GITHUB_TOKEN; no extra secrets needed. After the

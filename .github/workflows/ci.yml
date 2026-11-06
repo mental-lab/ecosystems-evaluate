@@ -124,7 +124,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           repository: mental-lab/unjam
-          ref: ce529a47ce57a6cd5e9db0ca7da36e794c529fa6
+          ref: 292b3826ff95c0b0200057e9be383e11ec597e25
           ssh-key: ${{ secrets.UNJAM_DEPLOY_KEY }}
           persist-credentials: false
           path: unjam

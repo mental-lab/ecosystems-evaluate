@@ -124,7 +124,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           repository: mental-lab/unjam
-          ref: 292b3826ff95c0b0200057e9be383e11ec597e25
+          ref: 1661cc2136f95e7b5f4678b72799b1df1c5e06eb
           ssh-key: ${{ secrets.UNJAM_DEPLOY_KEY }}
           persist-credentials: false
           path: unjam
@@ -175,7 +175,7 @@ jobs:
         if: github.event_name == 'pull_request'
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: ./unjam-cli publish --record evidence/advised-record.json --bot-login 'github-actions[bot]' --enroll
+        run: ./unjam-cli publish --record evidence/advised-record.json --scan evidence/grype.json --apk-db evidence/installed --bot-login 'github-actions[bot]' --enroll
 
       - name: Check labeled PRs
         if: github.event_name != 'pull_request'

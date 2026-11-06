@@ -130,15 +130,22 @@ class DockerfileAnalyzer:
             # FROM image:tag
             # FROM image:tag AS stage
             # FROM --platform=linux/amd64 image:tag
-            from_pattern = r'^\s*FROM\s+(?:--platform=[^\s]+\s+)?([^\s]+)'
+            from_pattern = r'^\s*FROM\s+(?:--platform=[^\s]+\s+)?([^\s]+)(?:\s+AS\s+([^\s]+))?'
+            stages = set()
             
             for line in content.split('\n'):
                 match = re.match(from_pattern, line, re.IGNORECASE)
                 if match:
                     image = match.group(1)
                     # Skip build stages (they reference previous stages)
-                    if not image.startswith('$') and image.lower() != 'scratch':
+                    if (not image.startswith('$') and image.lower() != 'scratch'
+                            and image.lower() not in stages):
                         images.append(image)
+                    # Aliases are local to this Dockerfile and may reference
+                    # either an external image or an earlier stage.
+                    alias = match.group(2)
+                    if alias:
+                        stages.add(alias.lower())
         
         except Exception as e:
             self.logger.debug(f"Failed to parse {dockerfile_path}: {e}")

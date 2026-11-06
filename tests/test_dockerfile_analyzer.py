@@ -50,6 +50,38 @@ class TestDockerfileAnalyzer(unittest.TestCase):
         self.assertTrue(results['adoption_detected'])
         self.assertEqual(results['other_images'], [])
 
+    def test_excludes_chained_stage_aliases(self):
+        self._write('Dockerfile',
+                    'FROM cgr.dev/chainguard/go:latest-dev AS builder\n'
+                    'FROM builder AS test\n'
+                    'FROM test AS release\n')
+        results = self.analyzer.analyze_repository(str(self.repo))
+        self.assertEqual(results['chainguard_images'], ['cgr.dev/chainguard/go:latest-dev'])
+        self.assertEqual(results['other_images'], [])
+        self.assertEqual(results['dockerfiles'][0]['other_images'], [])
+
+    def test_stage_aliases_with_platform_and_mixed_case(self):
+        self._write('Dockerfile',
+                    'from golang:1.24 as Build\n'
+                    'FROM --platform=linux/amd64 BUILD AS test\n'
+                    'FROM alpine:3.21\n')
+        results = self.analyzer.analyze_repository(str(self.repo))
+        self.assertEqual(set(results['other_images']), {'golang:1.24', 'alpine:3.21'})
+
+    def test_aliases_are_scoped_to_each_dockerfile(self):
+        self._write('Dockerfile', 'FROM alpine:3.21 AS builder\nFROM builder\n')
+        self._write('other/Dockerfile', 'FROM builder\n')
+        results = self.analyzer.analyze_repository(str(self.repo))
+        self.assertEqual(set(results['other_images']), {'alpine:3.21', 'builder'})
+
+    def test_alias_from_scratch_or_variable_is_not_external(self):
+        self._write('Dockerfile',
+                    'FROM scratch AS empty\nFROM empty\n'
+                    'FROM $BASE AS configured\nFROM configured\n')
+        results = self.analyzer.analyze_repository(str(self.repo))
+        self.assertEqual(results['other_images'], [])
+        self.assertEqual(results['chainguard_images'], [])
+
     def test_finds_nested_dockerfile_variants(self):
         self._write('services/api/Dockerfile.prod', 'FROM cgr.dev/chainguard/node:latest\n')
         self._write('services/worker/worker.dockerfile', 'FROM ubuntu:22.04\n')

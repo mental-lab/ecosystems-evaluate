@@ -6,15 +6,20 @@ on:
     tags: ['v*']
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
 
@@ -33,17 +38,56 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
 
       - name: Build container image
-        run: docker build -t ecosystems-evaluate:test .
+        id: build
+        run: docker build --pull --no-cache -t ecosystems-evaluate:test .
+
+      - name: Capture package ownership and run context
+        env:
+          TEST_REPOSITORY: ${{ github.repository }}
+          TEST_PR: ${{ github.event.pull_request.number }}
+          TEST_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          TEST_RUN_ID: ${{ github.run_id }}
+        run: |
+          mkdir -p unjam-evidence
+          container_id=$(docker create ecosystems-evaluate:test)
+          docker cp "$container_id:/usr/lib/apk/db/installed" unjam-evidence/installed
+          docker cp "$container_id:/etc/apk/repositories" unjam-evidence/repositories
+          docker rm "$container_id"
+          python - <<'PYCONTEXT'
+          import json, os
+          from pathlib import Path
+          context = {
+              "repository": os.environ["TEST_REPOSITORY"],
+              "pull_request": int(os.environ["TEST_PR"] or 0),
+              "head_sha": os.environ["TEST_HEAD_SHA"],
+              "run_id": int(os.environ["TEST_RUN_ID"]),
+          }
+          Path("unjam-evidence/context.json").write_text(json.dumps(context, indent=2))
+          PYCONTEXT
 
       - name: Scan image for vulnerabilities
-        uses: anchore/scan-action@v7
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7
         with:
           image: ecosystems-evaluate:test
           fail-build: true
           severity-cutoff: high
+          output-format: json
+          output-file: unjam-evidence/grype.json
+          grype-version: v0.110.0
+
+      - name: Retain Unjam test evidence
+        if: always() && steps.build.outcome == 'success'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: unjam-evidence
+          path: unjam-evidence/
+          retention-days: 7
+          if-no-files-found: error
 
   # Publish to GHCR on version tags (git tag v1.0.0 && git push --tags).
   # Uses the built-in GITHUB_TOKEN; no extra secrets needed. After the
@@ -57,7 +101,9 @@ jobs:
       packages: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
 
       - name: Log in to GHCR
         uses: docker/login-action@v3

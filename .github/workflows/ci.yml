@@ -107,7 +107,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           repository: mental-lab/unjam
-          ref: d6b1308c3f626d00ee90d5d47d6e236c22baae7d
+          ref: 7b0be07d606569f0b25f8e6c5e7fbfe71444e45a
           ssh-key: ${{ secrets.UNJAM_DEPLOY_KEY }}
           persist-credentials: false
           path: unjam
@@ -148,10 +148,13 @@ jobs:
             --head-sha "$TEST_HEAD_SHA" --run-id "$TEST_RUN_ID" \
             --out evidence/record.json
 
+      - name: Look up Chainguard advisories
+        run: ./unjam-cli advise --record evidence/record.json --out evidence/advised-record.json
+
       - name: Update PR report
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: ./unjam-cli publish --record evidence/record.json --bot-login 'github-actions[bot]' --enroll
+        run: ./unjam-cli publish --record evidence/advised-record.json --bot-login 'github-actions[bot]' --enroll
 
   # Publish to GHCR on version tags (git tag v1.0.0 && git push --tags).
   # Uses the built-in GITHUB_TOKEN; no extra secrets needed. After the
